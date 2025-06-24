@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulación Cliente-Servidor con Reintentos Limitados</title>
+  <style>
+    body { font-family: sans-serif; background-color: #eef; text-align: center; padding: 20px; }
+    #container { display: flex; justify-content: space-between; max-width: 1000px; margin: auto; }
+    #network { position: relative; width: 65%; height: 300px; border: 2px dashed #888; background-color: #fff; margin-right: 20px; }
+    #explanation { width: 30%; text-align: left; background-color: #fff; border: 2px solid #888; border-radius: 10px; padding: 10px; }
+    .box { position: absolute; width: 120px; padding: 10px; border-radius: 10px; background-color: #cce; border: 2px solid #339; text-align: center; }
+    #client { top: 100px; left: 20px; }
+    #dns { top: 10px; left: 250px; background-color: #ecc; border-color: #933; }
+    #server { top: 100px; right: 20px; }
+    .packet { position: absolute; width: 20px; height: 20px; border-radius: 50%; background-color: orange; border: 2px solid #000; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+    #latencyLog { margin-top: 20px; font-size: 14px; text-align: left; max-width: 1000px; margin-left: auto; margin-right: auto; background: #fff; border: 1px solid #ccc; padding: 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Simulación Cliente - Servidor con Reintentos Limitados</h1>
+  <p>Hacé clic para enviar una solicitud. Se reintenta hasta 3 veces si hay pérdida de datos.</p>
+  <button onclick="startSimulation()">Enviar solicitud</button>
+
+  <div id="container">
+    <div id="network">
+      <div class="box" id="client">Cliente (Tu PC)</div>
+      <div class="box" id="dns">Servidor DNS</div>
+      <div class="box" id="server">Servidor Web</div>
+      <div class="packet" id="packet" style="display:none;"></div>
+    </div>
+    <div id="explanation">
+      <h3>¿Qué está pasando?</h3>
+      <ol>
+        <li><strong>Cliente → DNS:</strong> Consulta por la dirección IP del sitio.</li>
+        <li><strong>DNS → Cliente:</strong> Respuesta con la IP (si no se pierde el paquete).</li>
+        <li><strong>Cliente → Servidor:</strong> Se conecta al servidor.</li>
+        <li><strong>Servidor → Cliente:</strong> Envía la página (si todo salió bien).</li>
+      </ol>
+      <p>Reintenta hasta 3 veces. Si falla, se muestra un error.</p>
+    </div>
+  </div>
+
+  <div id="latencyLog"></div>
+
+  <script>
+    function logLatency(message) {
+      const log = document.getElementById("latencyLog");
+      const entry = document.createElement("div");
+      entry.textContent = message;
+      log.appendChild(entry);
+    }
+
+    function maybeDropPacket() {
+      return Math.random() < 0.2; // 20% de pérdida
+    }
+
+    function movePacket(element, fromX, fromY, toX, toY, callback, label, attempt = 1) {
+      const maxAttempts = 3;
+      if (attempt > maxAttempts) {
+        logLatency(`${label}: ❌ Falló después de ${maxAttempts} intentos.`);
+        alert("❌ No se pudo completar la solicitud. Inténtalo nuevamente.");
+        element.style.display = 'none';
+        return;
+      }
+
+      const steps = 50;
+      let step = 0;
+      element.style.left = fromX + 'px';
+      element.style.top = fromY + 'px';
+      element.style.display = 'block';
+
+      if (maybeDropPacket()) {
+        logLatency(`${label} (intento ${attempt}): ❌ Paquete perdido, reintentando...`);
+        setTimeout(() => {
+          movePacket(element, fromX, fromY, toX, toY, callback, label, attempt + 1);
+        }, 500);
+        return;
+      }
+
+      const startTime = performance.now();
+      const interval = setInterval(() => {
+        const x = fromX + (toX - fromX) * (step / steps);
+        const y = fromY + (toY - fromY) * (step / steps);
+        element.style.left = x + 'px';
+        element.style.top = y + 'px';
+        step++;
+        if (step > steps) {
+          clearInterval(interval);
+          const endTime = performance.now();
+          const latency = Math.round(endTime - startTime);
+          logLatency(`${label} (intento ${attempt}): ${latency} ms`);
+          if (callback) callback();
+        }
+      }, 10 + Math.random() * 20);
+    }
+
+    function startSimulation() {
+      document.getElementById("latencyLog").innerHTML = "<strong>Registro de latencias:</strong><br>";
+      const packet = document.getElementById('packet');
+
+      const client = document.getElementById('client').getBoundingClientRect();
+      const dns = document.getElementById('dns').getBoundingClientRect();
+      const server = document.getElementById('server').getBoundingClientRect();
+      const offsetX = document.getElementById('network').getBoundingClientRect().left;
+      const offsetY = document.getElementById('network').getBoundingClientRect().top;
+
+      const cx = client.left + 60 - offsetX;
+      const cy = client.top + 25 - offsetY;
+      const dx = dns.left + 60 - offsetX;
+      const dy = dns.top + 25 - offsetY;
+      const sx = server.left + 60 - offsetX;
+      const sy = server.top + 25 - offsetY;
+
+      movePacket(packet, cx, cy, dx, dy, () => {
+        movePacket(packet, dx, dy, cx, cy, () => {
+          movePacket(packet, cx, cy, sx, sy, () => {
+            movePacket(packet, sx, sy, cx, cy, () => {
+              logLatency("✅ Página recibida correctamente");
+              packet.style.display = 'none';
+            }, "Servidor → Cliente");
+          }, "Cliente → Servidor");
+        }, "DNS → Cliente");
+      }, "Cliente → DNS");
+    }
+  </script>
+</body>
+</html>
